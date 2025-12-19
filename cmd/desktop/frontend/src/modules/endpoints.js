@@ -4,6 +4,7 @@ import { getEndpointStats } from './stats.js';
 import { toggleEndpoint, testAllEndpointsZeroCost } from './config.js';
 
 const ENDPOINT_TEST_STATUS_KEY = 'ccNexus_endpointTestStatus';
+const ENDPOINT_VIEW_MODE_KEY = 'ccNexus_endpointViewMode';
 
 // 获取端点测试状态
 export function getEndpointTestStatus(endpointName) {
@@ -24,6 +25,55 @@ export function saveEndpointTestStatus(endpointName, success) {
     } catch (error) {
         console.error('Failed to save endpoint test status:', error);
     }
+}
+
+// 获取端点视图模式
+export function getEndpointViewMode() {
+    try {
+        return localStorage.getItem(ENDPOINT_VIEW_MODE_KEY) || 'detail';
+    } catch {
+        return 'detail';
+    }
+}
+
+// 保存端点视图模式
+export function saveEndpointViewMode(mode) {
+    try {
+        localStorage.setItem(ENDPOINT_VIEW_MODE_KEY, mode);
+    } catch (error) {
+        console.error('Failed to save endpoint view mode:', error);
+    }
+}
+
+// 切换视图模式
+export function switchEndpointViewMode(mode) {
+    saveEndpointViewMode(mode);
+
+    // 更新按钮状态
+    const buttons = document.querySelectorAll('.view-mode-btn');
+    buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === mode);
+    });
+
+    // 更新列表样式
+    const container = document.getElementById('endpointList');
+    if (mode === 'compact') {
+        container.classList.add('compact-view');
+    } else {
+        container.classList.remove('compact-view');
+    }
+
+    // 重新渲染端点列表
+    window.loadConfig();
+}
+
+// 初始化视图模式
+export function initEndpointViewMode() {
+    const mode = getEndpointViewMode();
+    const buttons = document.querySelectorAll('.view-mode-btn');
+    buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === mode);
+    });
 }
 
 let currentTestButton = null;
@@ -47,6 +97,17 @@ export function clearTestState() {
     if (currentTestButton) {
         currentTestButton.disabled = false;
         currentTestButton.innerHTML = currentTestButtonOriginalText;
+
+        // 恢复简洁视图的 moreBtn
+        const endpointItem = currentTestButton.closest('.endpoint-item-compact');
+        if (endpointItem) {
+            const moreBtn = endpointItem.querySelector('[data-action="more"]');
+            if (moreBtn) {
+                moreBtn.disabled = false;
+                moreBtn.innerHTML = '⋯';
+            }
+        }
+
         currentTestButton = null;
         currentTestButtonOriginalText = '';
         currentTestIndex = -1;
@@ -89,6 +150,16 @@ export async function renderEndpoints(endpoints) {
         return { endpoint: ep, originalIndex: index, stats, enabled };
     });
 
+    // 检查视图模式
+    const viewMode = getEndpointViewMode();
+    if (viewMode === 'compact') {
+        container.classList.add('compact-view');
+        renderCompactView(sortedEndpoints, container, currentEndpointName);
+        return;
+    } else {
+        container.classList.remove('compact-view');
+    }
+
     sortedEndpoints.forEach(({ endpoint: ep, originalIndex: index, stats }) => {
         const totalTokens = stats.inputTokens + stats.outputTokens;
         const enabled = ep.enabled !== undefined ? ep.enabled : true;
@@ -116,8 +187,9 @@ export async function renderEndpoints(endpoints) {
         item.innerHTML = `
             <div class="endpoint-info">
                 <h3>
-                    ${ep.name}
                     <span title="${testStatusTip}" style="cursor: help">${testStatusIcon}</span>
+                    ${ep.name}
+                    ${!enabled ? '<span class="disabled-badge">' + t('endpoints.disabled') + '</span>' : ''}
                     ${isCurrentEndpoint ? '<span class="current-badge">' + t('endpoints.current') + '</span>' : ''}
                     ${enabled && !isCurrentEndpoint ? '<button class="btn btn-switch" data-action="switch" data-name="' + ep.name + '">' + t('endpoints.switchTo') + '</button>' : ''}
                 </h3>
@@ -397,5 +469,407 @@ export async function checkAllEndpointsOnStartup() {
         }
     } catch (error) {
         console.error('Failed to check endpoints on startup:', error);
+    }
+}
+
+// 渲染简洁视图
+function renderCompactView(sortedEndpoints, container, currentEndpointName) {
+    sortedEndpoints.forEach(({ endpoint: ep, originalIndex: index, stats }) => {
+        const enabled = ep.enabled !== undefined ? ep.enabled : true;
+        const transformer = ep.transformer || 'claude';
+        const model = ep.model || '';
+        const isCurrentEndpoint = ep.name === currentEndpointName;
+
+        // 获取测试状态
+        const testStatus = getEndpointTestStatus(ep.name);
+        let testStatusIcon = '⚠️';
+        let testStatusTip = t('endpoints.testTipUnknown');
+        if (testStatus === true) {
+            testStatusIcon = '✅';
+            testStatusTip = t('endpoints.testTipSuccess');
+        } else if (testStatus === false) {
+            testStatusIcon = '❌';
+            testStatusTip = t('endpoints.testTipFailed');
+        }
+
+        const item = document.createElement('div');
+        item.className = 'endpoint-item-compact';
+        item.draggable = true;
+        item.dataset.name = ep.name;
+        item.dataset.index = index;
+
+        // 截断 URL 显示
+        const displayUrl = ep.apiUrl.length > 40 ? ep.apiUrl.substring(0, 40) + '...' : ep.apiUrl;
+
+        // 构建统计详情提示
+        const totalTokens = stats.inputTokens + stats.outputTokens;
+        let statsTooltip = `${t('endpoints.requests')}: ${stats.requests} | ${t('endpoints.errors')}: ${stats.errors}\n${t('statistics.in')}: ${formatTokens(stats.inputTokens)} | ${t('statistics.out')}: ${formatTokens(stats.outputTokens)}`;
+        if (model) {
+            statsTooltip += `\n${t('modal.model')}: ${model}`;
+        }
+        if (ep.remark) {
+            statsTooltip += `\n${t('modal.remark')}: ${ep.remark}`;
+        }
+
+        item.innerHTML = `
+            <div class="drag-handle" title="${t('endpoints.dragToReorder')}">
+                <div class="drag-handle-dots"><span></span><span></span></div>
+                <div class="drag-handle-dots"><span></span><span></span></div>
+                <div class="drag-handle-dots"><span></span><span></span></div>
+            </div>
+            <span class="compact-status" title="${testStatusTip}" style="cursor: help">${testStatusIcon}</span>
+            <span class="compact-name" title="${ep.name}">${ep.name}</span>
+            ${isCurrentEndpoint ? '<span class="btn btn-primary compact-badge-btn">' + t('endpoints.current') + '</span>' : (enabled ? '<button class="btn btn-primary compact-badge-btn" data-action="switch" data-name="' + ep.name + '">' + t('endpoints.switchTo') + '</button>' : '<span class="btn btn-primary compact-badge-btn compact-badge-disabled">' + t('endpoints.disabled') + '</span>')}
+            <span class="compact-url" title="${ep.apiUrl}"><span class="compact-url-icon">🌐</span>${displayUrl}</span>
+            <span class="compact-transformer">🔄 ${transformer}</span>
+            <span class="compact-stats" title="${statsTooltip}">📊 ${stats.requests} | 🎯 ${formatTokens(stats.inputTokens + stats.outputTokens)}</span>
+            <div class="compact-actions">
+                <label class="toggle-switch">
+                    <input type="checkbox" data-index="${index}" ${enabled ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+                <div class="compact-more-dropdown">
+                    <button class="compact-btn" data-action="more" title="${t('endpoints.moreActions')}">⋯</button>
+                    <div class="compact-more-menu">
+                        <button data-action="test" data-index="${index}">🧪 ${t('endpoints.test')}</button>
+                        <button data-action="edit" data-index="${index}">✏️ ${t('endpoints.edit')}</button>
+                        <button data-action="delete" data-index="${index}" class="danger">🗑️ ${t('endpoints.delete')}</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 绑定事件
+        bindCompactItemEvents(item, index, enabled);
+
+        // 设置拖拽
+        setupCompactDragAndDrop(item, container);
+
+        container.appendChild(item);
+    });
+
+    // 点击其他地方关闭下拉菜单（先移除旧监听器，避免重复绑定）
+    document.removeEventListener('click', closeAllDropdowns);
+    document.addEventListener('click', closeAllDropdowns);
+}
+
+// 绑定简洁视图项目事件
+function bindCompactItemEvents(item, index, enabled) {
+    const toggleSwitch = item.querySelector('input[type="checkbox"]');
+    const switchBtn = item.querySelector('[data-action="switch"]');
+    const moreBtn = item.querySelector('[data-action="more"]');
+    const moreMenu = item.querySelector('.compact-more-menu');
+    const testBtn = item.querySelector('[data-action="test"]');
+    const editBtn = item.querySelector('[data-action="edit"]');
+    const deleteBtn = item.querySelector('[data-action="delete"]');
+
+    // 如果当前正在测试这个端点，显示加载状态
+    if (currentTestIndex === index) {
+        moreBtn.innerHTML = '⏳';
+        moreBtn.disabled = true;
+        currentTestButton = testBtn;
+    }
+
+    // 启用/禁用开关
+    toggleSwitch.addEventListener('change', async (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'));
+        const newEnabled = e.target.checked;
+        try {
+            await toggleEndpoint(idx, newEnabled);
+            window.loadConfig();
+        } catch (error) {
+            console.error('Failed to toggle endpoint:', error);
+            alert('Failed to toggle endpoint: ' + error);
+            e.target.checked = !newEnabled;
+        }
+    });
+
+    // 切换按钮
+    if (switchBtn) {
+        switchBtn.addEventListener('click', async () => {
+            const name = switchBtn.getAttribute('data-name');
+            try {
+                switchBtn.disabled = true;
+                switchBtn.innerHTML = '⏳';
+                await window.go.main.App.SwitchToEndpoint(name);
+                window.loadConfig(); // Refresh display
+            } catch (error) {
+                console.error('Failed to switch endpoint:', error);
+                alert(t('endpoints.switchFailed') + ': ' + error);
+            } finally {
+                if (switchBtn) {
+                    switchBtn.disabled = false;
+                    switchBtn.innerHTML = t('endpoints.switchTo');
+                }
+            }
+        });
+    }
+
+    // 更多操作按钮
+    moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = moreMenu.classList.contains('show');
+        closeAllDropdowns();
+        if (!isOpen) {
+            moreMenu.classList.add('show');
+        }
+    });
+
+    // 测试按钮
+    testBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        const idx = parseInt(testBtn.getAttribute('data-index'));
+        window.testEndpoint(idx, testBtn);
+    });
+
+    // 编辑按钮
+    editBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        const idx = parseInt(editBtn.getAttribute('data-index'));
+        window.editEndpoint(idx);
+    });
+
+    // 删除按钮
+    deleteBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        const idx = parseInt(deleteBtn.getAttribute('data-index'));
+        window.deleteEndpoint(idx);
+    });
+}
+
+// 关闭所有下拉菜单
+function closeAllDropdowns() {
+    document.querySelectorAll('.compact-more-menu.show').forEach(menu => {
+        menu.classList.remove('show');
+    });
+}
+
+// 检查是否有下拉菜单正在显示
+export function isDropdownOpen() {
+    return document.querySelectorAll('.compact-more-menu.show').length > 0;
+}
+
+// 拖拽占位符元素
+let dragPlaceholder = null;
+let draggedItemHeight = 0;
+
+// 创建占位符（指示线）
+function createPlaceholder() {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'drag-placeholder';
+    return placeholder;
+}
+
+// 更新其他元素的位置
+function updateItemPositions(container, draggedElement, placeholder) {
+    const allItems = Array.from(container.querySelectorAll('.endpoint-item-compact'));
+    const draggedIndex = allItems.indexOf(draggedElement);
+
+    // 计算占位符在端点元素中的目标索引
+    let targetIndex = 0;
+    let currentNode = placeholder.previousSibling;
+    while (currentNode) {
+        if (currentNode.classList && currentNode.classList.contains('endpoint-item-compact')) {
+            targetIndex++;
+        }
+        currentNode = currentNode.previousSibling;
+    }
+
+    allItems.forEach((item, index) => {
+        let offset = 0;
+
+        if (item === draggedElement) {
+            // 被拖拽元素视觉上移动到占位符位置
+            offset = (targetIndex - draggedIndex) * (draggedItemHeight + 8);
+        } else if (draggedIndex < targetIndex) {
+            // 向下拖拽：draggedIndex 和 targetIndex 之间的元素向上移
+            if (index > draggedIndex && index < targetIndex) {
+                offset = -(draggedItemHeight + 8);
+            }
+        } else if (draggedIndex > targetIndex) {
+            // 向上拖拽：targetIndex 和 draggedIndex 之间的元素向下移
+            if (index >= targetIndex && index < draggedIndex) {
+                offset = draggedItemHeight + 8;
+            }
+        }
+
+        item.style.transform = offset !== 0 ? `translateY(${offset}px)` : '';
+    });
+}
+
+// 根据鼠标位置移动占位符
+function movePlaceholderByMousePosition(e, container, draggedElement, dragPlaceholder) {
+    if (!draggedElement || !dragPlaceholder) return;
+
+    const allItems = Array.from(container.querySelectorAll('.endpoint-item-compact'));
+    const mouseY = e.clientY;
+
+    // 找到最接近鼠标位置的元素
+    let closestItem = null;
+    let closestDistance = Infinity;
+    let insertBefore = true;
+
+    allItems.forEach(item => {
+        if (item === draggedElement) return;
+
+        const rect = item.getBoundingClientRect();
+        const itemMiddle = rect.top + rect.height / 2;
+        const distance = Math.abs(mouseY - itemMiddle);
+
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestItem = item;
+            insertBefore = mouseY < itemMiddle;
+        }
+    });
+
+    // 移动占位符
+    if (closestItem) {
+        const targetPosition = insertBefore ? closestItem : closestItem.nextSibling;
+        if (targetPosition !== dragPlaceholder && targetPosition !== dragPlaceholder.nextSibling) {
+            container.insertBefore(dragPlaceholder, targetPosition);
+            updateItemPositions(container, draggedElement, dragPlaceholder);
+        }
+    } else if (allItems.length === 1) {
+        // 只有一个元素（被拖拽的元素）
+        if (dragPlaceholder.parentNode !== container) {
+            container.appendChild(dragPlaceholder);
+        }
+    }
+}
+
+// 简洁视图的拖拽设置
+function setupCompactDragAndDrop(item, container) {
+    item.addEventListener('dragstart', (e) => {
+        draggedElement = item;
+        draggedOriginalName = item.dataset.name;
+        draggedItemHeight = item.offsetHeight;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', item.innerHTML);
+
+        // 创建并插入占位符（指示线）
+        dragPlaceholder = createPlaceholder();
+        item.parentNode.insertBefore(dragPlaceholder, item.nextSibling);
+
+        // 在容器上添加事件监听
+        container.addEventListener('dragover', handleContainerDragOver);
+        container.addEventListener('drop', handleContainerDrop);
+
+        autoScrollInterval = setInterval(() => {
+            if (window.lastDragEvent) {
+                autoScroll(window.lastDragEvent);
+            }
+        }, 50);
+    });
+
+    item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        const allItems = container.querySelectorAll('.endpoint-item-compact');
+        allItems.forEach(i => {
+            i.classList.remove('drag-over');
+            i.style.transform = '';
+        });
+
+        // 清理容器的 cursor 样式
+        container.style.cursor = '';
+
+        // 移除容器的事件监听
+        container.removeEventListener('dragover', handleContainerDragOver);
+        container.removeEventListener('drop', handleContainerDrop);
+
+        // 移除占位符
+        if (dragPlaceholder && dragPlaceholder.parentNode) {
+            dragPlaceholder.parentNode.removeChild(dragPlaceholder);
+            dragPlaceholder = null;
+        }
+
+        draggedElement = null;
+        draggedOverElement = null;
+        draggedOriginalName = null;
+        draggedItemHeight = 0;
+
+        if (autoScrollInterval) {
+            clearInterval(autoScrollInterval);
+            autoScrollInterval = null;
+        }
+        window.lastDragEvent = null;
+    });
+
+    // 在端点元素上禁止 drop（但允许事件冒泡到容器，让占位符能正常移动）
+    item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        // 移除 stopPropagation()，让事件冒泡到容器
+        e.dataTransfer.dropEffect = 'none';
+    });
+}
+
+// 容器的 dragover 处理函数
+function handleContainerDragOver(e) {
+    e.preventDefault();
+    window.lastDragEvent = e;
+
+    const container = e.currentTarget;
+
+    // 检查鼠标是否在端点元素上
+    const isOverEndpointItem = e.target.closest('.endpoint-item-compact');
+
+    if (isOverEndpointItem) {
+        // 在端点元素上：显示禁止图标，但仍然移动占位符
+        e.dataTransfer.dropEffect = 'none';
+        container.style.cursor = 'no-drop';
+    } else {
+        // 在空白区域或占位符上：显示允许图标
+        e.dataTransfer.dropEffect = 'move';
+        container.style.cursor = 'grabbing';
+    }
+
+    // 始终更新占位符位置，让其他元素自动移开
+    movePlaceholderByMousePosition(e, container, draggedElement, dragPlaceholder);
+}
+
+// 容器的 drop 处理函数
+async function handleContainerDrop(e) {
+    if (e.target.closest('.endpoint-item-compact')) {
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+
+    const container = e.currentTarget;
+    if (draggedElement && dragPlaceholder) {
+        const draggedName = draggedElement.dataset.name;
+        const allItems = Array.from(container.querySelectorAll('.endpoint-item-compact'));
+        const currentOrder = allItems.map(el => el.dataset.name);
+        const allChildren = Array.from(container.children);
+        const placeholderIndex = allChildren.indexOf(dragPlaceholder);
+
+        let targetIndex = 0;
+        for (let i = 0; i < placeholderIndex; i++) {
+            if (allChildren[i].classList.contains('endpoint-item-compact')) {
+                targetIndex++;
+            }
+        }
+
+        const draggedIndex = currentOrder.indexOf(draggedName);
+        if (draggedIndex < targetIndex) {
+            targetIndex--;
+        }
+
+        const newOrder = [...currentOrder];
+        newOrder.splice(draggedIndex, 1);
+        newOrder.splice(targetIndex, 0, draggedName);
+
+        const orderChanged = !currentOrder.every((name, idx) => name === newOrder[idx]);
+        if (!orderChanged) return;
+
+        try {
+            await window.go.main.App.ReorderEndpoints(newOrder);
+            window.loadConfig();
+        } catch (error) {
+            console.error('Failed to reorder endpoints:', error);
+            alert(t('endpoints.reorderFailed') + ': ' + error);
+            window.loadConfig();
+        }
     }
 }

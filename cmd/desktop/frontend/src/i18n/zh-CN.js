@@ -36,7 +36,13 @@ export default {
         expand: '展开',
         testTipSuccess: '已测试连接成功',
         testTipFailed: '测试连接失败或当前端点不支持接口测试',
-        testTipUnknown: '未测试或测试结果未知'
+        testTipUnknown: '未测试或测试结果未知',
+        expand: '展开',
+        viewDetail: '默认视图',
+        viewCompact: '列表视图',
+        dragToReorder: '拖拽排序',
+        moreActions: '更多操作',
+        disabled: '已禁用'
     },
     modal: {
         addEndpoint: '添加端点',
@@ -168,6 +174,10 @@ export default {
             minimize: '最小化到托盘',
             ask: '每次询问'
         },
+        proxy: '代理设置',
+        proxyUrl: '代理地址',
+        proxyUrlPlaceholder: '例如：http://127.0.0.1:7890 或 socks5://127.0.0.1:1080',
+        proxyHelp: '配置 HTTP/SOCKS5 代理，留空则直连',
         languageHelp: '选择界面显示语言',
         save: '保存',
         cancel: '取消',
@@ -339,6 +349,7 @@ export default {
         projectDirsHelp: '添加常用的项目目录，点击启动自动打开终端（可先选择会话）',
         addDir: '添加目录',
         noDirs: '暂无项目目录，点击下方按钮添加',
+        project: '项目',
         launchFailed: '启动终端失败',
         launch: '启动',
         launchWithSession: '恢复会话',
