@@ -33,9 +33,9 @@ function Show-MainMenu {
         Write-Host "  项目管理"
         Write-Host "═══════════════════════════════════════════════════════════"
         Write-Host ""
-        Write-Host "  1. 🚀 启动后端     (bin\start-backend.bat)"
+        Write-Host "  1. 🚀 启动后端     (bin\start-backend.ps1)"
         Write-Host ""
-        Write-Host "  2. 🎨 启动前端     (bin\start-front.bat)"
+        Write-Host "  2. 🎨 启动前端     (bin\start-front.ps1)"
         Write-Host ""
         Write-Host "═══════════════════════════════════════════════════════════"
         Write-Host ""
@@ -59,7 +59,7 @@ function Show-MainMenu {
                 Write-Host "╚════════════════════════════════════════════════════════════╝"
                 Write-Host ""
 
-                $backendScript = Join-Path $BIN_DIR "start-backend.bat"
+                $backendScript = Join-Path $BIN_DIR "start-backend.ps1"
                 & $backendScript
 
                 Write-Host ""
@@ -73,7 +73,7 @@ function Show-MainMenu {
                 Write-Host "╚════════════════════════════════════════════════════════════╝"
                 Write-Host ""
 
-                $frontScript = Join-Path $BIN_DIR "start-front.bat"
+                $frontScript = Join-Path $BIN_DIR "start-front.ps1"
                 & $frontScript
 
                 Write-Host ""
